@@ -5,162 +5,118 @@ from sklearn.metrics import mean_absolute_error, mean_squared_error, r2_score
 import matplotlib.pyplot as plt
 
 # ==============================
-# 1. Carregar dataset
+#  FUNÇÃO 1 — CARREGAR DATASET
 # ==============================
-# Leitura do arquivo FIPE 2022
-df = pd.read_csv("/dataset/fipe_2022.csv")
+def carregar_dados(caminho="/dataset/fipe_2022.csv"):
+    df = pd.read_csv(caminho)
 
-print("Registros totais antes da limpeza:", len(df))
+    df = df.drop(["fipe_code","authentication","gear"], axis=1)
+    df = df.drop_duplicates()
 
-# ==============================
-# 2. Limpeza básica
-# ==============================
-# Remove colunas irrelevantes para a previsão
-df = df.drop([
-    "fipe_code",
-    "authentication",
-    "gear",
-], axis=1)
+    map_meses = {
+        "January": 1, "February": 2, "March": 3, "April": 4,
+        "May": 5, "June": 6, "July": 7, "August": 8,
+        "September": 9, "October": 10, "November": 11, "December": 12
+    }
 
-# Remove registros duplicados (caso exista repetição)
-df = df.drop_duplicates()
+    df["month_of_reference"] = df["month_of_reference"].map(map_meses)
+    df["year_of_reference"] = df["year_of_reference"].astype(int)
 
-# ==============================
-# 3. Converter mês (nomes → números)
-# ==============================
-# Mapeamento manual de nome do mês para número (necessário para ordenar)
-map_meses = {
-    "January": 1,
-    "February": 2,
-    "March": 3,
-    "April": 4,
-    "May": 5,
-    "June": 6,
-    "July": 7,
-    "August": 8,
-    "September": 9,
-    "October": 10,
-    "November": 11,
-    "December": 12
-}
+    df["ref"] = df["year_of_reference"].astype(str) + "/" + df["month_of_reference"].astype(str).str.zfill(2)
 
-# Converte textos de mês/ano para inteiros
-df["month_of_reference"] = df["month_of_reference"].map(map_meses)
-df["year_of_reference"] = df["year_of_reference"].astype(int)
+    df = df.sort_values(["brand", "model", "year_of_reference", "month_of_reference"])
+    return df
 
-# Cria coluna ref no formato YYYY/MM — útil para rótulos de gráfico
-df["ref"] = df["year_of_reference"].astype(str) + "/" + df["month_of_reference"].astype(str).str.zfill(2)
 
-# Ordena os dados de forma consistente
-df = df.sort_values(["brand", "model", "year_of_reference", "month_of_reference"])
+# ======================================
+#  FUNÇÃO 2 — EXECUTAR O MODELO 1
+# ====================================== 
+def executar_modelo(df, marca, modelo_carro, ano_modelo):
+    # Filtrar apenas o modelo desejado
+    df_modelo = df[(df["brand"] == marca) & (df["model"] == modelo_carro)].copy()
+    if df_modelo.empty:
+        return None, "Modelo não encontrado no dataset"
 
-# ==============================
-# 4. Filtrar marca e modelo desejado
-# ==============================
-MARCA = "Acura"
-MODELO = "Legend 3.2/3.5"
+    # Ordenar cronologicamente
+    df_modelo = df_modelo.sort_values(["year_of_reference", "month_of_reference"]).reset_index(drop=True)
 
-# Seleciona apenas linhas do carro escolhido
-df_modelo = df[(df["brand"] == MARCA) & (df["model"] == MODELO)]
-print(f"Registros encontrados de {MARCA} {MODELO}: {len(df_modelo)}")
+    # Criar variável t (tempo)
+    df_modelo["t"] = np.arange(len(df_modelo))
 
-# Garante que existam meses suficientes para treinar um modelo mensal
-if len(df_modelo) < 12:
-    raise SystemExit("ERRO: Poucos registros para treinar previsão mensal.")
+    X = df_modelo[["t"]]
+    y = df_modelo["avg_price_brl"]
 
-# ==============================
-# 5. Filtrar apenas ano 2022
-# ==============================
-df_2022 = df_modelo[df_modelo["year_of_reference"] == 2022].copy()
+    modelo = LinearRegression()
+    modelo.fit(X, y)
 
-print("Registros apenas de 2022:", len(df_2022))
-print(df_2022[["ref", "avg_price_brl"]])
+    # Último ponto (último mês do dataset)
+    t_final = df_modelo["t"].iloc[-1]
 
-# ==============================
-# 6. Criar variável temporal t
-# ==============================
-# Ordena meses e cria t = índice temporal (0 a 11)
-df_2022 = df_2022.sort_values("month_of_reference").reset_index(drop=True)
-df_2022["t"] = np.arange(len(df_2022))
+    # Previsão para o último ponto real do dataset
+    y_pred = float(modelo.predict([[t_final]])[0])
 
-# ==============================
-# 7. Treino (Jan–Nov) e Teste (Dez)
-# ==============================
-# Treina usando meses 1 a 11 → prevê mês 12
-df_train = df_2022[df_2022["month_of_reference"] <= 11]
-df_test  = df_2022[df_2022["month_of_reference"] == 12]
+    # Preço real disponível no dataset
+    preco_real = float(df_modelo["avg_price_brl"].iloc[-1])
 
-# X = t (tempo) | y = preço
-X_train = df_train[["t"]]
-y_train = df_train["avg_price_brl"]
+    # Métricas
+    mae = abs(preco_real - y_pred)
+    mse = (preco_real - y_pred) ** 2
+    rmse = np.sqrt(mse)
+    erro_percentual = mae / preco_real * 100
 
-X_test = df_test[["t"]]
-y_test = df_test["avg_price_brl"]
+    # Monta resposta no formato que o app.py usa
+    res = {
+        "modelo": "Modelo 1",
 
-print("\nTreino:", len(X_train), "| Teste (dez):", len(X_test))
+        # dados do carro
+        "marca": marca,
+        "modelo_carro": modelo_carro,
+        "ano": ano_modelo,
 
-# ==============================
-# 8. Regressão Linear
-# ==============================
-# Treina o modelo com relação linear entre tempo t e preço
-modelo = LinearRegression()
-modelo.fit(X_train, y_train)
+        # valores
+        "y_pred": y_pred,
+        "preco_previsto": y_pred,
+        "preco_real": preco_real,
+        "mae": mae,
+        "mse": mse,
+        "rmse": rmse,
+        "erro_percentual": erro_percentual,
 
-# Gera previsão para dezembro
-y_pred = modelo.predict(X_test)
+        # para gráficos:
+        "t": df_modelo["t"],
+        "y_real": df_modelo["avg_price_brl"],
+        "modelo_obj": modelo
+    }
 
-# ==============================
-# 9. Resultados
-# ==============================
-print("\n===== Previsão de DEZEMBRO para esse modelo =====")
-print(f"ref={df_test['ref'].iloc[0]}  "
-      f"real=R${y_test.iloc[0]:.2f}  "
-      f"previsto=R${y_pred[0]:.2f}")
+    return res, None
 
-# ==============================
-# 9A. Métricas de desempenho
-# ==============================
 
-mae  = mean_absolute_error(y_test, y_pred)
-mse  = mean_squared_error(y_test, y_pred)
-rmse = np.sqrt(mse)
-r2   = r2_score(y_test, y_pred)
-erro_percentual = (abs(y_test.iloc[0] - y_pred[0]) / y_test.iloc[0]) * 100
 
-print("\n===== MÉTRICAS DE DESEMPENHO =====")
-print(f"MAE : {mae:.2f}")
-print(f"MSE : {mse:.2f}")
-print(f"RMSE: {rmse:.2f}")
-print(f"R²  : {r2:.4f}")
-print(f"Erro Percentual   : {erro_percentual:.2f}%")
+# ======================================
+#  FUNÇÃO 3 — GERAR GRÁFICO PARA STREAMLIT
+# ======================================
+def plot_regressao(res):
+    t = res["t"].to_numpy().reshape(-1, 1)
+    y_real = res["y_real"].to_numpy()
+    y_pred = res["y_pred"]
 
-# ==============================
-# 10. Gráfico da Regressão
-# ==============================
+    fig, ax = plt.subplots(figsize=(10, 5))
 
-plt.figure(figsize=(10,5))
+    # Treinar modelo interno só para plotar linha completa
+    modelo_plot = LinearRegression()
+    modelo_plot.fit(t, y_real)
+    y_full_pred = modelo_plot.predict(t)
 
-# Gera a linha completa da regressão (t = 0..11)
-t_full = df_2022["t"].values.reshape(-1,1)
-y_full_pred = modelo.predict(t_full)
+    ax.plot(res["t"], y_full_pred, label="Regressão Linear", linewidth=2)
+    ax.scatter(res["t"], y_real, color="black", label="Preço Real")
+    ax.scatter([t[-1]], [y_pred], color="red", s=90, label="Previsão Último mês")
+    ax.scatter([t[-1]], [res["preco_real"]], color="green", s=90, label="Preço Real Último mês")
 
-# Linha da regressão
-plt.plot(df_2022["ref"], y_full_pred, label="Regressão Linear", linewidth=2)
+    ax.set_xlabel("Mês (sequência)")
+    ax.set_ylabel("Preço (R$)")
+    ax.set_title(f"{res['marca']} {res['modelo_carro']} — Previsão do último mês")
+    ax.legend()
+    ax.grid(True)
+    plt.tight_layout()
 
-# Pontos reais do preço FIPE
-plt.scatter(df_2022["ref"], df_2022["avg_price_brl"], color='black', label="Preço Real")
-
-# Destaque de dezembro (real vs previsto)
-plt.scatter(df_test["ref"], y_pred, color='red', s=100, label="Previsão Dezembro")
-plt.scatter(df_test["ref"], y_test, color='green', s=100, label="Real Dezembro")
-
-# Ajustes visuais
-plt.xticks(rotation=45)
-plt.xlabel("Mês de Referência (2022)")
-plt.ylabel("Preço (R$)")
-plt.title(f"Regressão Linear — {MARCA} {MODELO} — Previsão Dezembro")
-plt.legend()
-plt.grid(True)
-
-plt.tight_layout()
-plt.show()
+    return fig
