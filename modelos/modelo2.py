@@ -2,6 +2,7 @@ import pandas as pd
 import numpy as np
 from sklearn.linear_model import LinearRegression
 import matplotlib.pyplot as plt
+from sklearn.metrics import mean_absolute_error, mean_squared_error, r2_score
 
 # ==============================
 # 1. Carregar dataset
@@ -96,29 +97,52 @@ X_train = df_train[["t"]]
 y_train = df_train["avg_price_brl"]
 
 X_test = df_test[["t"]]
-y_test = df_test["avg_price_brl"]
 
+preco_real = 27666.00  # Preco real de FEVEREIRO 
+ 
 print("\nTreino:", len(X_train), "| Teste (dez):", len(X_test))
+
+# Como estamos usando preco_real manual, recriamos y_test corretamente
+y_test = np.array([preco_real])
 
 # ==============================
 # 8. Regressão Linear
 # ==============================
-# Ajusta o modelo usando apenas a variável temporal
 modelo = LinearRegression()
 modelo.fit(X_train, y_train)
 
-# Previsão de dezembro
-y_pred = modelo.predict(X_test)
+# Previsão usando X_test (garante compatibilidade)
+y_pred = modelo.predict(X_test.values)
 
 # ==============================
 # 9. Resultados
 # ==============================
 print("\n===== Previsão de DEZEMBRO =====")
 print(f"{MARCA} {MODELO} {ANO_MODELO}")
-print(f"ref={df_test['ref'].iloc[0]}  "
-      f"real=R${y_test.iloc[0]:.2f}  "
-      f"previsto=R${y_pred[0]:.2f}")
+print(f"ref={df_test['ref'].iloc[0]}  real=R${preco_real:.2f}  previsto=R${y_pred[0]:.2f}")
 
+# ==============================
+# 10. Métricas de desempenho
+# ==============================
+mae  = mean_absolute_error(y_test, y_pred)
+mse  = mean_squared_error(y_test, y_pred)
+rmse = np.sqrt(mse)
+
+# R² só é válido quando há mais de 1 valor no conjunto de teste
+if len(y_test) > 1:
+    r2 = r2_score(y_test, y_pred)
+else:
+    r2 = "N/A"
+
+erro_percentual = (abs(preco_real - y_pred[0]) / preco_real) * 100
+
+print("\n===== MÉTRICAS DE DESEMPENHO =====")
+print(f"MAE               : {mae:.2f}")
+print(f"MSE               : {mse:.2f}")
+print(f"RMSE              : {rmse:.2f}")
+print(f"R²                : {r2}")
+print(f"Erro Percentual   : {erro_percentual:.2f}%")
+  
 # ==============================
 # 10. Gráfico
 # ==============================

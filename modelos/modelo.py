@@ -1,6 +1,7 @@
 import pandas as pd
 import numpy as np
 from sklearn.linear_model import LinearRegression
+from sklearn.metrics import mean_absolute_error, mean_squared_error, r2_score
 import matplotlib.pyplot as plt
 
 # ==============================
@@ -75,11 +76,6 @@ df_2022 = df_modelo[df_modelo["year_of_reference"] == 2022].copy()
 print("Registros apenas de 2022:", len(df_2022))
 print(df_2022[["ref", "avg_price_brl"]])
 
-# Aviso caso o dataset não tenha todos os 12 meses
-if len(df_2022) != 12:
-    print("\n⚠ ALERTA: Este modelo pode não ter 12 meses completos em 2022")
-    # Continua mesmo assim
-
 # ==============================
 # 6. Criar variável temporal t
 # ==============================
@@ -120,6 +116,23 @@ print("\n===== Previsão de DEZEMBRO para esse modelo =====")
 print(f"ref={df_test['ref'].iloc[0]}  "
       f"real=R${y_test.iloc[0]:.2f}  "
       f"previsto=R${y_pred[0]:.2f}")
+
+# ==============================
+# 9A. Métricas de desempenho
+# ==============================
+
+mae  = mean_absolute_error(y_test, y_pred)
+mse  = mean_squared_error(y_test, y_pred)
+rmse = np.sqrt(mse)
+r2   = r2_score(y_test, y_pred)
+erro_percentual = (abs(y_test.iloc[0] - y_pred[0]) / y_test.iloc[0]) * 100
+
+print("\n===== MÉTRICAS DE DESEMPENHO =====")
+print(f"MAE : {mae:.2f}")
+print(f"MSE : {mse:.2f}")
+print(f"RMSE: {rmse:.2f}")
+print(f"R²  : {r2:.4f}")
+print(f"Erro Percentual   : {erro_percentual:.2f}%")
 
 # ==============================
 # 10. Gráfico da Regressão

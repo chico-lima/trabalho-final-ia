@@ -1,7 +1,9 @@
 import pandas as pd
 import numpy as np
 from sklearn.linear_model import LinearRegression
+from sklearn.metrics import mean_absolute_error, mean_squared_error, r2_score
 import matplotlib.pyplot as plt
+
 
 # ==============================
 # 1. Carregar dataset
@@ -85,9 +87,6 @@ df_modelo_expandido = df[
 
 print(f"\nRegistros filtrados (com vizinhos): {len(df_modelo_expandido)}")
 
-if len(df_modelo_expandido) < 15:
-    print("⚠ Poucos dados (menos de 15), mas continuando mesmo assim...")
-
 # Ordenar por data real
 df_modelo_expandido = df_modelo_expandido.sort_values(
     ["year_of_reference", "month_of_reference"]
@@ -123,6 +122,27 @@ y_fev23_pred = modelo.predict(X_fev23)[0]
 print("\n===== PREVISÃO PARA FEVEREIRO/2023 =====")
 print(f"t = {t_fev23}")
 print(f"Preço previsto = R$ {y_fev23_pred:.2f}")
+
+# ==============================
+# 6.1 — MÉTRICAS DE DESEMPENHO
+# ==============================
+
+preco_real = 27666.00  
+
+mae  = mean_absolute_error([preco_real], [y_fev23_pred])
+mse  = mean_squared_error([preco_real], [y_fev23_pred])
+rmse = np.sqrt(mse)
+erro_percentual = abs(preco_real - y_fev23_pred) / preco_real * 100
+
+print("\n===== MÉTRICAS DE DESEMPENHO =====")
+print(f"MAE              : {mae:.2f}")
+print(f"MSE              : {mse:.2f}")
+print(f"RMSE             : {rmse:.2f}")
+print(f"Erro Percentual  : {erro_percentual:.2f}%")
+
+# R² não funciona com 1 amostra → evitar erro
+print("R²               : N/A (exige 2+ valores reais)")
+
 
 # ==============================
 # 7. Gráfico
